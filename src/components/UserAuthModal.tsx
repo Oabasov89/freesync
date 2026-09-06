@@ -68,35 +68,58 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
 
     try {
       if (mode === 'signup') {
-        const { data: sbData, error: sbError } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: {
-              name: name.trim() || undefined,
+        let sbUser: any = null;
+        let sbSession: any = null;
+        try {
+          const { data: sbData, error: sbError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              data: {
+                name: name.trim() || undefined,
+              },
             },
-          },
-        });
+          });
+          if (!sbError) {
+            sbUser = sbData?.user;
+            sbSession = sbData?.session;
+          }
+        } catch {}
 
-        if (sbError) {
-          throw new Error(`Supabase Auth: ${sbError.message}`);
-        }
-
-        if (sbData?.session && sbData?.user) {
-          const baasUser = mapSupabaseUserToBaasUser(sbData.user);
-          const syncRes = await fetch('/api/v1/auth/supabase-session', {
+        // Register in FreeSync BaaS store
+        let localUser: any = null;
+        let localToken: string | null = null;
+        try {
+          const localRes = await fetch('/api/v1/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: baasUser, token: sbData.session.access_token }),
+            body: JSON.stringify({ email: cleanEmail, password, name: name.trim() || undefined }),
           });
-          const syncData = await syncRes.json();
-          onSignInSuccess(syncData.user || baasUser, sbData.session.access_token);
-          setSuccessMessage(`Account created in Supabase! Welcome, ${baasUser.name}.`);
-          setTimeout(() => onClose(), 900);
-        } else if (sbData?.user) {
-          setSuccessMessage(
-            `Registration submitted! Supabase sent a verification email to ${cleanEmail}. Please verify or sign in with test credentials.`
-          );
+          if (localRes.ok) {
+            const data = await localRes.json();
+            localUser = data.user;
+            localToken = data.token;
+          }
+        } catch {}
+
+        if (sbSession && sbUser) {
+          const baasUser = mapSupabaseUserToBaasUser(sbUser);
+          await fetch('/api/v1/auth/supabase-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: baasUser, token: sbSession.access_token }),
+          }).catch(() => {});
+          onSignInSuccess(baasUser, sbSession.access_token);
+          setSuccessMessage(`Account registered and verified! Welcome, ${baasUser.name}.`);
+          setTimeout(() => onClose(), 800);
+        } else if (localUser && localToken) {
+          onSignInSuccess(localUser, localToken);
+          setSuccessMessage(`Account created successfully! Welcome, ${localUser.name}.`);
+          setTimeout(() => onClose(), 800);
+        } else if (sbUser) {
+          setSuccessMessage(`Account registered! Verification email sent to ${cleanEmail}.`);
+        } else {
+          throw new Error('Registration failed. Please check your email and password.');
         }
       } else {
         const { data: sbData, error: sbError } = await supabase.auth.signInWithPassword({
@@ -113,10 +136,10 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
           });
           const syncData = await syncRes.json();
           onSignInSuccess(syncData.user || baasUser, sbData.session.access_token);
-          setSuccessMessage(`Signed in via Supabase as ${baasUser.name}.`);
-          setTimeout(() => onClose(), 900);
+          setSuccessMessage(`Signed in successfully as ${baasUser.name}.`);
+          setTimeout(() => onClose(), 800);
         } else {
-          // Fallback to local authentication for pre-seeded developer accounts
+          // Fallback to local authentication
           const localRes = await fetch('/api/v1/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -127,12 +150,12 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
             const localData = await localRes.json();
             onSignInSuccess(localData.user, localData.token);
             setSuccessMessage(`Signed in successfully as ${localData.user.name}.`);
-            setTimeout(() => onClose(), 900);
+            setTimeout(() => onClose(), 800);
           } else {
             const localData = await localRes.json().catch(() => ({}));
             throw new Error(
               sbError?.message
-                ? `Supabase Auth: ${sbError.message}`
+                ? sbError.message
                 : (localData.error || 'Invalid credentials.')
             );
           }

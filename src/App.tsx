@@ -9,12 +9,6 @@ import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { DatabaseView } from './components/DatabaseView';
 import { AuthView } from './components/AuthView';
-import { SimulatorView } from './components/SimulatorView';
-import { PlaygroundView } from './components/PlaygroundView';
-import { StorageView } from './components/StorageView';
-import { FunctionsView } from './components/FunctionsView';
-import { SdkDocsView } from './components/SdkDocsView';
-import { SettingsView } from './components/SettingsView';
 import { UserAuthModal } from './components/UserAuthModal';
 import { LandingPageView } from './components/LandingPageView';
 import { Collection, Document, ProjectSettings, RealtimeEvent, User } from './types/baas';
@@ -38,6 +32,8 @@ export default function App() {
   });
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
+
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
 
   // Strict Gate: Never allow unauthenticated users in console
   useEffect(() => {
@@ -300,15 +296,15 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'simulator' && <SimulatorView />}
-
               {activeTab === 'database' && (
                 <DatabaseView
                   collections={collections}
-                  activeCollectionId={collections[0]?.id || null}
-                  setActiveCollectionId={() => {}}
+                  activeCollectionId={activeCollectionId || collections[0]?.id || null}
+                  setActiveCollectionId={setActiveCollectionId}
                   onRefreshCollections={handleRefreshData}
                   recentUpdatedDocIds={new Set()}
+                  currentUser={currentUser}
+                  authToken={authToken}
                 />
               )}
 
@@ -326,18 +322,6 @@ export default function App() {
                     setShowAuthModal(true);
                   }}
                 />
-              )}
-
-              {activeTab === 'playground' && <PlaygroundView project={project} />}
-
-              {activeTab === 'storage' && <StorageView />}
-
-              {activeTab === 'functions' && <FunctionsView />}
-
-              {activeTab === 'sdk' && <SdkDocsView project={project} />}
-
-              {activeTab === 'settings' && (
-                <SettingsView project={project} onRefreshData={handleRefreshData} />
               )}
             </main>
           </div>

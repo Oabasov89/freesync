@@ -83,36 +83,56 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
     try {
       if (authMode === 'signup') {
         // Authenticate with Supabase GoTrue Auth
-        const { data: sbData, error: sbError } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: password,
-          options: {
-            data: {
-              name: name.trim() || undefined,
+        let sbUser: any = null;
+        let sbSession: any = null;
+        try {
+          const { data: sbData, error: sbError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: password,
+            options: {
+              data: {
+                name: name.trim() || undefined,
+              },
             },
-          },
-        });
+          });
+          if (!sbError) {
+            sbUser = sbData?.user;
+            sbSession = sbData?.session;
+          }
+        } catch {}
 
-        if (sbError) {
-          throw new Error(`Supabase Auth: ${sbError.message}`);
-        }
-
-        if (sbData?.session && sbData?.user) {
-          // Instant active session
-          const baasUser = mapSupabaseUserToBaasUser(sbData.user);
-          const syncRes = await fetch('/api/v1/auth/supabase-session', {
+        // Register in FreeSync BaaS store
+        let localUser: any = null;
+        let localToken: string | null = null;
+        try {
+          const localRes = await fetch('/api/v1/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: baasUser, token: sbData.session.access_token }),
+            body: JSON.stringify({ email: cleanEmail, password, name: name.trim() || undefined }),
           });
-          const syncData = await syncRes.json();
-          onSignInSuccess(syncData.user || baasUser, sbData.session.access_token);
-          setSuccessMessage(`Account registered and verified with Supabase! Welcome, ${baasUser.name}.`);
-        } else if (sbData?.user) {
-          // Email confirmation is required by this Supabase project
-          setSuccessMessage(
-            `Registration initiated in Supabase! Supabase sent a verification email to ${cleanEmail}. Check your inbox to confirm, or sign in below with test credentials.`
-          );
+          if (localRes.ok) {
+            const data = await localRes.json();
+            localUser = data.user;
+            localToken = data.token;
+          }
+        } catch {}
+
+        if (sbSession && sbUser) {
+          const baasUser = mapSupabaseUserToBaasUser(sbUser);
+          await fetch('/api/v1/auth/supabase-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: baasUser, token: sbSession.access_token }),
+          }).catch(() => {});
+          onSignInSuccess(baasUser, sbSession.access_token);
+          setSuccessMessage(`Account registered and verified! Welcome, ${baasUser.name}.`);
+        } else if (localUser && localToken) {
+          onSignInSuccess(localUser, localToken);
+          setSuccessMessage(`Account created successfully! Welcome, ${localUser.name}.`);
+        } else if (sbUser) {
+          setSuccessMessage(`Account registered! Verification email sent to ${cleanEmail}.`);
+        } else {
+          throw new Error('Registration failed. Please check your email and password.');
         }
       } else {
         // Sign In with Supabase GoTrue Auth
@@ -131,31 +151,9 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
           });
           const syncData = await syncRes.json();
           onSignInSuccess(syncData.user || baasUser, sbData.session.access_token);
-          setSuccessMessage(`Signed in via Supabase Auth as ${baasUser.name}!`);
+          setSuccessMessage(`Signed in successfully as ${baasUser.name}.`);
         } else {
-          // If Supabase returned an error:
-          if (sbError?.message?.toLowerCase().includes('email not confirmed')) {
-            // Check if user has an active local session or give clear guidance
-            try {
-              const localRes = await fetch('/api/v1/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: cleanEmail, password }),
-              });
-              if (localRes.ok) {
-                const localData = await localRes.json();
-                onSignInSuccess(localData.user, localData.token);
-                setSuccessMessage(`Signed in as ${localData.user.name}. (Supabase email verification is pending)`);
-                return;
-              }
-            } catch {}
-
-            throw new Error(
-              `Supabase Auth: Email not confirmed yet. Supabase sent a verification link to ${cleanEmail}. Please click the link to activate, or sign in with one of the instant developer accounts.`
-            );
-          }
-
-          // Fallback to BaaS local authentication for seeded/developer accounts
+          // Fallback to BaaS local authentication
           const localRes = await fetch('/api/v1/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -170,7 +168,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             const localData = await localRes.json().catch(() => ({}));
             throw new Error(
               sbError?.message
-                ? `Supabase Auth: ${sbError.message}`
+                ? sbError.message
                 : (localData.error || 'Invalid email or password.')
             );
           }
@@ -266,8 +264,8 @@ asyncio.run(fetch_realtime_data())`,
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-serif tracking-tight text-[#F5F5F5]">
-                  Free<span className="italic text-violet-400">Sync</span>
+                <span className="text-lg font-bold tracking-tight text-white">
+                  Free<span className="text-violet-400">Sync</span>
                 </span>
                 <span className="rounded-full bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-violet-300">
                   BaaS Platform
@@ -364,9 +362,9 @@ asyncio.run(fetch_realtime_data())`,
               <span>Free & Self-Contained Backend-as-a-Service</span>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif tracking-tight text-white leading-[1.12]">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-sans font-bold tracking-tight text-white leading-[1.12]">
               The Open Realtime Backend <br />
-              <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-purple-300 to-indigo-300">
+              <span className="text-violet-400">
                 Without the Cloud Tax.
               </span>
             </h1>
@@ -403,7 +401,7 @@ asyncio.run(fetch_realtime_data())`,
                 <button
                   id="hero-btn-launch-console"
                   onClick={() => onEnterConsole('dashboard')}
-                  className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-5 py-3 text-sm font-semibold shadow-lg shadow-violet-600/20 transition-all"
+                  className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-5 py-3 text-sm font-semibold shadow-lg shadow-violet-600/20 transition-all cursor-pointer"
                 >
                   <span>Enter BaaS Console</span>
                   <ArrowRight className="h-4 w-4" />
@@ -415,9 +413,9 @@ asyncio.run(fetch_realtime_data())`,
                     setAuthMode('signin');
                     const formEl = document.getElementById('auth-card-section');
                     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                    setError('Authentication required: Please sign in with your Supabase credentials to access the BaaS system.');
+                    setError('Please sign in or create an account to access the BaaS system.');
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-5 py-3 text-sm font-semibold shadow-lg shadow-violet-600/20 transition-all"
+                  className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-5 py-3 text-sm font-semibold shadow-lg shadow-violet-600/20 transition-all cursor-pointer"
                 >
                   <Lock className="h-4 w-4" />
                   <span>Sign In to Access BaaS</span>
@@ -425,21 +423,21 @@ asyncio.run(fetch_realtime_data())`,
                 </button>
               )}
               <button
-                id="hero-btn-playground"
+                id="hero-btn-database"
                 onClick={() => {
                   if (currentUser) {
-                    onEnterConsole('playground');
+                    onEnterConsole('database');
                   } else {
                     setAuthMode('signin');
                     const formEl = document.getElementById('auth-card-section');
                     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                    setError('Authentication required: Please sign in with your Supabase credentials to access the REST playground and database.');
+                    setError('Please sign in or create an account to access the database.');
                   }
                 }}
-                className="flex items-center gap-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-5 py-3 text-sm font-medium text-zinc-200 transition-all"
+                className="flex items-center gap-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-5 py-3 text-sm font-medium text-zinc-200 transition-all cursor-pointer"
               >
-                <Terminal className="h-4 w-4 text-zinc-400" />
-                <span>Explore REST Playground</span>
+                <Database className="h-4 w-4 text-zinc-400" />
+                <span>Explore Realtime Database</span>
               </button>
             </div>
           </div>
@@ -529,27 +527,8 @@ asyncio.run(fetch_realtime_data())`,
               ) : (
                 /* Unauthenticated Sign In / Sign Up Form */
                 <div>
-                  {/* Supabase Provider Connected Badge */}
-                  <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-medium text-emerald-300">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span>Supabase Auth Connected</span>
-                      </div>
-                      <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-mono text-emerald-300">
-                        Zero-Cost GoTrue
-                      </span>
-                    </div>
-                    <div className="text-[11px] font-mono text-zinc-400 truncate">
-                      API: <span className="text-zinc-200">https://qloqkizzrwatgolnmqlx.supabase.co</span>
-                    </div>
-                    <div className="text-[10px] font-mono text-zinc-500 truncate">
-                      Anon: <span className="text-zinc-400">sb_publishable_7ltjDS9yqrFPwWD6G-AoxA_DeNX6o4s</span>
-                    </div>
-                  </div>
-
                   {/* Tab Selector */}
-                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-900/80 p-1 mb-4 border border-zinc-800 text-xs">
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-950 p-1 mb-5 border border-zinc-800/80 text-xs">
                     <button
                       type="button"
                       id="tab-btn-signin"
@@ -558,9 +537,9 @@ asyncio.run(fetch_realtime_data())`,
                         setError(null);
                         setSuccessMessage(null);
                       }}
-                      className={`rounded-lg py-2 font-medium transition-all ${
+                      className={`rounded-lg py-2.5 font-medium transition-all ${
                         authMode === 'signin'
-                          ? 'bg-[#1e1e1e] text-white shadow-sm'
+                          ? 'bg-zinc-800 text-white shadow-sm'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -574,13 +553,13 @@ asyncio.run(fetch_realtime_data())`,
                         setError(null);
                         setSuccessMessage(null);
                       }}
-                      className={`rounded-lg py-2 font-medium transition-all ${
+                      className={`rounded-lg py-2.5 font-medium transition-all ${
                         authMode === 'signup'
-                          ? 'bg-[#1e1e1e] text-white shadow-sm'
+                          ? 'bg-zinc-800 text-white shadow-sm'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Create Free Account
+                      Create Account
                     </button>
                   </div>
 
@@ -611,16 +590,16 @@ asyncio.run(fetch_realtime_data())`,
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. Jordan Miller"
-                            className="w-full rounded-lg border border-zinc-800 bg-[#161616] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9.5 pr-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 focus:outline-none transition-all"
                           />
                         </div>
                       </div>
                     )}
 
                     <div>
-                      <label className="block text-[11px] font-medium text-zinc-300 mb-1">Email Address</label>
+                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">Email Address</label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                        <Mail className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
                         <input
                           id="input-landing-email"
                           type="email"
@@ -628,15 +607,15 @@ asyncio.run(fetch_realtime_data())`,
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="developer@example.com"
-                          className="w-full rounded-lg border border-zinc-800 bg-[#161616] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9.5 pr-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 focus:outline-none transition-all"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-zinc-300 mb-1">Password</label>
+                      <label className="block text-xs font-medium text-zinc-300 mb-1.5">Password</label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                        <Lock className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
                         <input
                           id="input-landing-password"
                           type={showPassword ? 'text' : 'password'}
@@ -644,12 +623,12 @@ asyncio.run(fetch_realtime_data())`,
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           placeholder={authMode === 'signup' ? 'Min 6 characters' : 'Enter your password'}
-                          className="w-full rounded-lg border border-zinc-800 bg-[#161616] pl-9 pr-9 py-2 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:outline-none"
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 pl-9.5 pr-9.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 focus:outline-none transition-all"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300"
+                          className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-300 transition-colors"
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -660,7 +639,7 @@ asyncio.run(fetch_realtime_data())`,
                       type="submit"
                       id="btn-landing-auth-submit"
                       disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-medium py-2.5 text-xs shadow-md transition-all mt-2"
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-medium py-3 text-xs shadow-lg shadow-violet-600/20 transition-all mt-4 cursor-pointer"
                     >
                       {isLoading ? (
                         <span className="flex items-center gap-2">
@@ -668,7 +647,7 @@ asyncio.run(fetch_realtime_data())`,
                           Processing...
                         </span>
                       ) : (
-                        <span>{authMode === 'signup' ? 'Create Free Account' : 'Sign In to BaaS'}</span>
+                        <span>{authMode === 'signup' ? 'Create Free Account' : 'Sign In'}</span>
                       )}
                     </button>
                   </form>
@@ -729,7 +708,7 @@ asyncio.run(fetch_realtime_data())`,
         <div className="max-w-7xl mx-auto space-y-12">
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <span className="text-xs font-mono uppercase tracking-wider text-violet-400">Everything You Need</span>
-            <h2 className="text-3xl sm:text-4xl font-serif text-white tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
               A Complete Backend Suite. Zero Setup Friction.
             </h2>
             <p className="text-sm text-zinc-400">
@@ -819,7 +798,7 @@ asyncio.run(fetch_realtime_data())`,
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             <div>
               <span className="text-xs font-mono uppercase tracking-wider text-violet-400">Developer First</span>
-              <h2 className="text-3xl font-serif text-white tracking-tight">Connect in 3 Lines of Code</h2>
+              <h2 className="text-3xl font-bold text-white tracking-tight">Connect in 3 Lines of Code</h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Standard REST and Server-Sent Events work with any frontend framework.
               </p>
@@ -897,7 +876,7 @@ asyncio.run(fetch_realtime_data())`,
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="text-center space-y-2 max-w-2xl mx-auto">
             <span className="text-xs font-mono uppercase tracking-wider text-emerald-400">Zero Cloud Bill</span>
-            <h2 className="text-3xl font-serif text-white tracking-tight">How FreeSync Compares</h2>
+            <h2 className="text-3xl font-bold text-white tracking-tight">How FreeSync Compares</h2>
             <p className="text-xs text-zinc-400">
               Transparent side-by-side comparison with commercial backend platforms.
             </p>
@@ -957,9 +936,9 @@ asyncio.run(fetch_realtime_data())`,
       </section>
 
       {/* Bottom CTA Banner */}
-      <section className="py-16 px-4 sm:px-8 bg-gradient-to-b from-[#0A0A0A] to-[#121212] border-b border-[#262626]">
+      <section className="py-16 px-4 sm:px-8 bg-zinc-950/60 border-b border-[#262626]">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl sm:text-4xl font-serif text-white tracking-tight">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
             Stop Paying the Cloud Tax. <br />
             Start Building with FreeSync.
           </h2>
@@ -971,7 +950,7 @@ asyncio.run(fetch_realtime_data())`,
               <button
                 id="btn-bottom-launch-console"
                 onClick={() => onEnterConsole()}
-                className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-violet-600/30 transition-all"
+                className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-violet-600/30 transition-all cursor-pointer"
               >
                 <span>Launch BaaS Console</span>
                 <ArrowRight className="h-4 w-4" />
@@ -983,9 +962,9 @@ asyncio.run(fetch_realtime_data())`,
                   setAuthMode('signin');
                   const formEl = document.getElementById('auth-card-section');
                   if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                  setError('Sign-in required: Please authenticate with your Supabase credentials to access the BaaS system.');
+                  setError('Please sign in or create an account to access the BaaS system.');
                 }}
-                className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-violet-600/30 transition-all"
+                className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 text-sm font-semibold shadow-lg shadow-violet-600/30 transition-all cursor-pointer"
               >
                 <Lock className="h-4 w-4" />
                 <span>Sign In to Launch Console</span>
@@ -998,7 +977,7 @@ asyncio.run(fetch_realtime_data())`,
                 const formEl = document.getElementById('auth-card-section');
                 if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-6 py-3 text-sm font-medium text-zinc-300 transition-all"
+              className="rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-6 py-3 text-sm font-medium text-zinc-300 transition-all cursor-pointer"
             >
               Register Free Account
             </button>
@@ -1010,8 +989,8 @@ asyncio.run(fetch_realtime_data())`,
       <footer className="py-8 px-4 sm:px-8 bg-[#070707] text-xs text-zinc-400">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-serif text-zinc-200">
-              Free<span className="italic text-violet-400">Sync</span> BaaS
+            <span className="font-bold text-zinc-200">
+              Free<span className="text-violet-400">Sync</span> BaaS
             </span>
             <span>• Zero-Cost Realtime Backend Engine</span>
           </div>
@@ -1021,33 +1000,33 @@ asyncio.run(fetch_realtime_data())`,
             <button
               onClick={() => {
                 if (currentUser) {
-                  onEnterConsole('sdk');
+                  onEnterConsole('database');
                 } else {
                   setAuthMode('signin');
                   const formEl = document.getElementById('auth-card-section');
                   if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                  setError('Sign-in required to view SDK documentation and credentials.');
+                  setError('Sign-in required to view the database.');
                 }
               }}
-              className="hover:text-zinc-200"
+              className="hover:text-zinc-200 transition-colors cursor-pointer"
             >
-              SDK Docs
+              Realtime Database
             </button>
             <span>•</span>
             <button
               onClick={() => {
                 if (currentUser) {
-                  onEnterConsole('settings');
+                  onEnterConsole('auth');
                 } else {
                   setAuthMode('signin');
                   const formEl = document.getElementById('auth-card-section');
                   if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                  setError('Sign-in required to view system settings.');
+                  setError('Sign-in required to view authentication management.');
                 }
               }}
-              className="hover:text-zinc-200"
+              className="hover:text-zinc-200 transition-colors cursor-pointer"
             >
-              Settings
+              Authentication
             </button>
           </div>
         </div>

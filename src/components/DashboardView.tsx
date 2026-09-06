@@ -54,8 +54,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Instance: {project?.id || 'default'}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-serif tracking-tight text-[#F5F5F5]">
-              Realtime Synchronization &amp; <span className="italic font-normal text-violet-300">Authentication Engine</span>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+              Realtime Synchronization &amp; <span className="text-violet-400">Authentication Engine</span>
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
               Open-source alternative to Appwrite and Firebase. Push live updates across web, mobile, and IoT devices with sub-10ms latency using Server-Sent Events, complete with RBAC and passwordless authentication.
@@ -64,17 +64,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
-              id="dashboard-btn-simulator"
-              onClick={() => setActiveTab('simulator')}
-              className="flex items-center gap-2 rounded-lg bg-[#F5F5F5] hover:bg-white text-[#0A0A0A] font-serif font-medium px-4 py-2.5 text-xs shadow-sm transition-all"
+              id="dashboard-btn-auth"
+              onClick={() => setActiveTab('auth')}
+              className="flex items-center gap-2 rounded-lg bg-[#F5F5F5] hover:bg-white text-[#0A0A0A] font-semibold px-4 py-2.5 text-xs shadow-sm transition-all cursor-pointer"
             >
-              <Radio className="h-3.5 w-3.5 text-violet-700" />
-              <span>Launch Multi-Client Lab</span>
+              <Users className="h-3.5 w-3.5 text-violet-700" />
+              <span>Authentication &amp; RBAC</span>
             </button>
             <button
               id="dashboard-btn-database"
               onClick={() => setActiveTab('database')}
-              className="flex items-center gap-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-4 py-2.5 text-xs border border-zinc-800 transition-all"
+              className="flex items-center gap-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-4 py-2.5 text-xs border border-zinc-800 transition-all cursor-pointer"
             >
               <Database className="h-3.5 w-3.5 text-zinc-400" />
               <span>Manage Collections</span>
@@ -204,31 +204,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* Architecture Highlights */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-lg border border-[#262626] bg-[#121212] p-4 space-y-2">
-              <div className="flex items-center gap-2 text-zinc-200 text-xs font-serif font-medium">
+              <div className="flex items-center gap-2 text-zinc-200 text-xs font-semibold">
                 <CheckCircle2 className="h-3.5 w-3.5 text-violet-400" />
                 <span>Zero Cloud Billing</span>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+              <p className="text-xs text-zinc-400 leading-relaxed">
                 Deploy, host, and use locally or in self-hosted containers without cloud billing traps or arbitrary tier limits.
               </p>
             </div>
 
             <div className="rounded-lg border border-[#262626] bg-[#121212] p-4 space-y-2">
-              <div className="flex items-center gap-2 text-zinc-200 text-xs font-serif font-medium">
+              <div className="flex items-center gap-2 text-zinc-200 text-xs font-semibold">
                 <Radio className="h-3.5 w-3.5 text-violet-400" />
                 <span>Instant SSE Broadcasting</span>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+              <p className="text-xs text-zinc-400 leading-relaxed">
                 Lightweight HTTP/2 Server-Sent Events bypass firewall blocks and WebSocket overhead for sub-10ms syncing.
               </p>
             </div>
 
             <div className="rounded-lg border border-[#262626] bg-[#121212] p-4 space-y-2">
-              <div className="flex items-center gap-2 text-zinc-200 text-xs font-serif font-medium">
+              <div className="flex items-center gap-2 text-zinc-200 text-xs font-semibold">
                 <Shield className="h-3.5 w-3.5 text-violet-400" />
                 <span>Simplified Auth &amp; RBAC</span>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+              <p className="text-xs text-zinc-400 leading-relaxed">
                 Email/password, instant magic links, and anonymous guest conversion with flexible collection-level rules.
               </p>
             </div>

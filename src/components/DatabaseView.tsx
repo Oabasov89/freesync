@@ -12,8 +12,10 @@ import {
   Check,
   Layers,
   FileJson,
+  UserCheck,
+  Lock,
 } from 'lucide-react';
-import { Collection, Document, FieldType, SchemaField, SecurityRule } from '../types/baas';
+import { Collection, Document, FieldType, SchemaField, SecurityRule, User } from '../types/baas';
 
 interface DatabaseViewProps {
   collections: Collection[];
@@ -21,6 +23,8 @@ interface DatabaseViewProps {
   setActiveCollectionId: (id: string) => void;
   onRefreshCollections: () => void;
   recentUpdatedDocIds: Set<string>;
+  currentUser?: User | null;
+  authToken?: string | null;
 }
 
 export const DatabaseView: React.FC<DatabaseViewProps> = ({
@@ -29,12 +33,15 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
   setActiveCollectionId,
   onRefreshCollections,
   recentUpdatedDocIds,
+  currentUser,
+  authToken,
 }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalDocs, setTotalDocs] = useState(0);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
 
   // Tab inside database view: 'documents' | 'schema' | 'rules'
   const [viewSubTab, setViewSubTab] = useState<'documents' | 'schema' | 'rules'>('documents');
@@ -61,6 +68,14 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
 
   const activeCollection = collections.find((c) => c.id === activeCollectionId) || collections[0];
 
+  const displayedDocuments = documents.filter((doc) => {
+    if (filterMode === 'mine') {
+      if (!currentUser) return false;
+      return doc.createdBy === currentUser.id;
+    }
+    return true;
+  });
+
   useEffect(() => {
     if (!activeCollectionId && collections.length > 0) {
       setActiveCollectionId(collections[0].id);
@@ -79,7 +94,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
     try {
       const q = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
       const headers: Record<string, string> = {};
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null;
+      const token = authToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null);
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const res = await fetch(`/api/v1/databases/collections/${colId}/documents?limit=100${q}`, {
@@ -113,6 +128,8 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
         initialData[f.name] = 0;
       } else if (f.type === 'boolean') {
         initialData[f.name] = false;
+      } else if (['author', 'sender', 'assignee', 'user', 'userName'].includes(f.name)) {
+        initialData[f.name] = currentUser?.name || currentUser?.email || 'Authenticated User';
       } else {
         initialData[f.name] = '';
       }
@@ -145,7 +162,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
       }
     }
 
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null;
+    const token = authToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null);
     const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) authHeaders['Authorization'] = `Bearer ${token}`;
 
@@ -190,7 +207,7 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
       return;
     }
     try {
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null;
+      const token = authToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('fs_auth_token') : null);
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -394,21 +411,79 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                 </div>
               </div>
 
+              {/* Authenticated Identity & RLS Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-violet-500/20 bg-violet-950/20 px-3.5 py-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-3.5 w-3.5 text-violet-400" />
+                  <span className="text-zinc-300">
+                    Active BaaS User: <strong className="text-violet-200 font-mono">{currentUser ? currentUser.name : 'Anonymous Guest'}</strong>
+                  </span>
+                  {currentUser && (
+                    <span className="rounded bg-violet-500/15 border border-violet-500/30 px-2 py-0.2 text-[10px] font-mono text-violet-300 capitalize">
+                      {currentUser.role}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-400">
+                  <span className="flex items-center gap-1">
+                    <span className="text-zinc-500">Read:</span>
+                    <span className="text-zinc-300">{activeCollection.securityRule.read}</span>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-zinc-500">Create:</span>
+                    <span className="text-zinc-300">{activeCollection.securityRule.create}</span>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-zinc-500">Update/Delete:</span>
+                    <span className="text-zinc-300">{activeCollection.securityRule.update}</span>
+                  </span>
+                </div>
+              </div>
+
               {/* Sub Tab: Documents Table */}
               {viewSubTab === 'documents' && (
                 <div className="space-y-4">
-                  {/* Search and Action Bar */}
+                  {/* Search, Filter and Action Bar */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div className="relative w-full sm:w-72">
-                      <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-500" />
-                      <input
-                        type="text"
-                        placeholder="Search documents..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && fetchDocuments(activeCollection.id)}
-                        className="w-full rounded-lg bg-[#171717] border border-[#262626] pl-9 pr-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none font-mono"
-                      />
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-500" />
+                        <input
+                          type="text"
+                          placeholder="Search documents..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && fetchDocuments(activeCollection.id)}
+                          className="w-full rounded-lg bg-[#171717] border border-[#262626] pl-9 pr-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      {/* Filter: All vs My Records */}
+                      <div className="flex items-center rounded-lg bg-[#171717] p-0.5 border border-[#262626] text-[11px] font-mono">
+                        <button
+                          onClick={() => setFilterMode('all')}
+                          className={`px-2.5 py-1 rounded transition-colors ${
+                            filterMode === 'all'
+                              ? 'bg-zinc-800 text-zinc-100 font-medium'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          All ({documents.length})
+                        </button>
+                        <button
+                          onClick={() => setFilterMode('mine')}
+                          className={`px-2.5 py-1 rounded transition-colors ${
+                            filterMode === 'mine'
+                              ? 'bg-zinc-800 text-violet-300 font-medium'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          My Records
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -440,7 +515,8 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                       <thead className="border-b border-[#262626] bg-[#171717] text-zinc-400 uppercase tracking-wider text-[10px]">
                         <tr>
                           <th className="py-2.5 px-3.5 font-medium">Document ID</th>
-                          {activeCollection.fields.slice(0, 4).map((f) => (
+                          <th className="py-2.5 px-3.5 font-medium">Created By</th>
+                          {activeCollection.fields.slice(0, 3).map((f) => (
                             <th key={f.id} className="py-2.5 px-3.5 font-medium">
                               {f.name}
                             </th>
@@ -450,18 +526,21 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#262626]">
-                        {documents.length === 0 ? (
+                        {displayedDocuments.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={activeCollection.fields.slice(0, 4).length + 3}
+                              colSpan={activeCollection.fields.slice(0, 3).length + 4}
                               className="py-12 text-center text-zinc-500 font-sans text-xs"
                             >
-                              No documents found in this collection. Click "Add Document" to insert a record.
+                              {filterMode === 'mine'
+                                ? 'No documents created by your active user account yet. Click "Add Document" to insert a record tagged with your identity.'
+                                : 'No documents found in this collection. Click "Add Document" to insert a record.'}
                             </td>
                           </tr>
                         ) : (
-                          documents.map((doc) => {
+                          displayedDocuments.map((doc) => {
                             const isRecentlyUpdated = recentUpdatedDocIds.has(doc.id);
+                            const isMyDoc = currentUser && doc.createdBy === currentUser.id;
                             return (
                               <tr
                                 key={doc.id}
@@ -488,12 +567,25 @@ export const DatabaseView: React.FC<DatabaseViewProps> = ({
                                   </div>
                                 </td>
 
-                                {activeCollection.fields.slice(0, 4).map((f) => {
+                                {/* Created By Tag */}
+                                <td className="py-2.5 px-3.5 whitespace-nowrap">
+                                  {isMyDoc ? (
+                                    <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300 font-mono">
+                                      You ({currentUser.role})
+                                    </span>
+                                  ) : (
+                                    <span className="rounded bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 font-mono max-w-[120px] truncate inline-block">
+                                      {doc.createdBy || 'system'}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {activeCollection.fields.slice(0, 3).map((f) => {
                                   const val = doc.data[f.name];
                                   return (
                                     <td
                                       key={f.id}
-                                      className="py-2.5 px-3.5 text-zinc-300 max-w-[200px] truncate"
+                                      className="py-2.5 px-3.5 text-zinc-300 max-w-[180px] truncate"
                                     >
                                       {val === null || val === undefined ? (
                                         <span className="text-zinc-600 italic">null</span>
