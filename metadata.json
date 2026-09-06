@@ -1,0 +1,6 @@
+{
+  "name": "FreeSync BaaS",
+  "description": "Open-source zero-cost Backend-as-a-Service platform with real user authentication, real-time document synchronization, row-level security, and developer console.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
